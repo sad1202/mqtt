@@ -5,7 +5,6 @@ from PyQt5.QtCore import QCoreApplication, QThread
 import signal
 
 from core.camera_stream import CameraStream
-from core.BatchManager import BatchManager
 from core.infer_thread import InferThread
 from core.mqtt_service import MQTTService
 from core.publisher import MQTTPublisher
@@ -54,17 +53,13 @@ def main():
 
     model_path = "yolo26n.pt"
 
-    frame_queue = queue.Queue(maxsize=3)
+    # Create queues for each active camera
+    cam_queues = { camera["code"]: queue.Queue(maxsize=3) for camera in active_cameras }
 
     infer_thread = InferThread(
-        model_path=model_path, device="cuda", frame_queue=frame_queue
+        model_path=model_path, device="cuda", cam_queues=cam_queues
     )
     infer_thread.start()
-
-    batch_size = len(active_cameras)
-    batch_manager = BatchManager(
-        batch_size=batch_size, polygons=polygons, frame_queue=frame_queue
-    )
 
     infer_thread.results_ready.connect(publisher.publish_signal)
     camera_threads = []
@@ -77,8 +72,12 @@ def main():
         print(f"Initializing stream for camera {camera_code}: {rtsp_url}")
 
         thread = QThread()
-        stream = CameraStream(camera_code=camera_code, rtsp_url=rtsp_url)
-        stream.frame_ready.connect(batch_manager.add_frame)
+        stream = CameraStream(
+            camera_code=camera_code, 
+            rtsp_url=rtsp_url, 
+            polygons=polygons.get(camera_code, []), 
+            frame_queue=cam_queues[camera_code]
+        )
         stream.status.connect(lambda msg, code=camera_code: print(f"[{code}] {msg}"))
 
         stream.moveToThread(thread)

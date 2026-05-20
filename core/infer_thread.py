@@ -1,30 +1,40 @@
 import time
 from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot
 from ultralytics import YOLO
+import queue
 
 
 class InferThread(QThread):
     results_ready = pyqtSignal(object)
 
-    def __init__(self, model_path: str, device="cuda", frame_queue=None):
+    def __init__(self, model_path: str, device="cuda", cam_queues=None):
         super().__init__()
         self.model_path = model_path
         self.device = device
-        self.frame_queue = frame_queue
+        self.cam_queues = cam_queues or {}
 
     def run(self):
-        from ultralytics import YOLO
-     
+        
         self.model = YOLO(self.model_path, task="detect")
         
         while True:
-            if self.frame_queue is None:
-                break
+            if not self.cam_queues:
+                time.sleep(1)
+                continue
                 
-           
-            batch = self.frame_queue.get()
-            if batch is None:
-                break 
+            batch = []
+            
+            # Poll one frame from each camera's queue
+            for cam_code, q in self.cam_queues.items():
+                try:
+                    item = q.get(timeout=0.01)
+                    batch.append(item)
+                except queue.Empty:
+                    continue
+            
+            if not batch:
+                time.sleep(0.01)
+                continue
                 
             frame = []
             meta = []
