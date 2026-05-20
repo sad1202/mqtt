@@ -1,6 +1,8 @@
 import sys
+import queue
 import argparse
 from PyQt5.QtCore import QCoreApplication, QThread
+import signal
 
 from core.camera_stream import CameraStream
 from core.BatchManager import BatchManager
@@ -8,7 +10,6 @@ from core.infer_thread import InferThread
 from core.mqtt_service import MQTTService
 from core.publisher import MQTTPublisher
 
-# Import config and helper functions from the mock template
 from mock_bbox_publisher import MQTT_CONFIG, load_cameras, load_polygons
 
 
@@ -21,8 +22,7 @@ def main():
 
     cfg = MQTT_CONFIG
     print("Loading cameras from MQTT...")
-    
-    # Load cameras using the logic from the mock publisher
+
     cameras = load_cameras(cfg)
     print("Loading polygons from MQTT (this may take up to 5 seconds)...")
     polygons = load_polygons(cfg)
@@ -42,38 +42,31 @@ def main():
     if len(active_cameras) == 0:
         sys.exit(1)
 
-    # 1. Start MQTT Service
     mqtt_service = MQTTService(cfg)
     mqtt_service.start()
 
-    # 2. Setup Publisher
-    # We pass the ai_module from config to match the mock_bbox template
     publisher = MQTTPublisher(
-        mqtt_service.client, 
-        cfg["bbox_topic_template"], 
+        mqtt_service.client,
+        cfg["bbox_topic_template"],
         ai_module=cfg.get("ai_module", "PLATE"),
-        polygons=polygons
+        polygons=polygons,
     )
 
-    # 3. Setup Infer Thread
-    # Based on the directory, we use the ONNX or PyTorch weights. 
-    # yolo26n.pt was seen in the project root.
-    model_path = "yolo26n.pt" 
-    infer_thread = InferThread(model_path=model_path, device="cuda")
-    # By moving it to itself, the infer() slot will execute in its own QThread event loop
-    infer_thread.moveToThread(infer_thread)
+    model_path = "yolo26n.pt"
+
+    frame_queue = queue.Queue(maxsize=3)
+
+    infer_thread = InferThread(
+        model_path=model_path, device="cuda", frame_queue=frame_queue
+    )
     infer_thread.start()
 
-    # 4. Setup Batch Manager
-    # batch_size should be the number of active cameras so that we wait for 1 frame from each camera
     batch_size = len(active_cameras)
-    batch_manager = BatchManager(batch_size=batch_size, polygons=polygons)
+    batch_manager = BatchManager(
+        batch_size=batch_size, polygons=polygons, frame_queue=frame_queue
+    )
 
-    # 5. Connect processing pipeline signals/slots
-    batch_manager.batch_ready.connect(infer_thread.infer)
     infer_thread.results_ready.connect(publisher.publish_signal)
-
-    # 6. Start Camera Streams
     camera_threads = []
     camera_streams = []
 
@@ -82,26 +75,23 @@ def main():
         rtsp_url = camera["rtsp"]
 
         print(f"Initializing stream for camera {camera_code}: {rtsp_url}")
-        
+
         thread = QThread()
         stream = CameraStream(camera_code=camera_code, rtsp_url=rtsp_url)
-        
-        # Connect stream signals
         stream.frame_ready.connect(batch_manager.add_frame)
         stream.status.connect(lambda msg, code=camera_code: print(f"[{code}] {msg}"))
-        
-        # Move the QObject to the new thread and connect started signal to run loop
+
         stream.moveToThread(thread)
         thread.started.connect(stream.run)
-        
+
         camera_threads.append(thread)
         camera_streams.append(stream)
-        
+
         thread.start()
 
     print("Pipeline started successfully. Waiting for frames... (Press Ctrl+C to stop)")
-    
-    # Start the PyQt event loop
+
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
     sys.exit(app.exec_())
 
 

@@ -1,17 +1,17 @@
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 import numpy as np
+import queue
 
 
 class BatchManager(QObject):
-    batch_ready = pyqtSignal(object)
-
-    def __init__(self, batch_size=3, polygons=None):
+    def __init__(self, batch_size=3, polygons=None, frame_queue=None):
         super().__init__()
         self.batch_size = batch_size
         self.current_batch = {}
         self.polygons = polygons or {}
+        self.frame_queue = frame_queue
 
-    @pyqtSlot(object)
+    @pyqtSlot(str, float, object)
     def add_frame(self, camera_code, timestamp, frame):
         cam_polygons = self.polygons.get(camera_code, [])
         h, w = frame.shape[:2]
@@ -53,6 +53,7 @@ class BatchManager(QObject):
             "orig_w": orig_w,
             "orig_h": orig_h
         }
+        
         if len(self.current_batch) >= self.batch_size:
             batch = []
             for cam_code, item in self.current_batch.items():
@@ -69,4 +70,17 @@ class BatchManager(QObject):
                 )
 
             self.current_batch.clear()
-            self.batch_ready.emit(batch)
+            
+            if self.frame_queue is not None:
+                try:
+                    self.frame_queue.put_nowait(batch)
+                except queue.Full:
+                    try:
+                        self.frame_queue.get_nowait()
+                    except queue.Empty:
+                        pass
+                    
+                    try:
+                        self.frame_queue.put_nowait(batch)
+                    except queue.Full:
+                        pass

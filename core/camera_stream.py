@@ -13,6 +13,7 @@ class CameraStream(QObject):
     status = pyqtSignal(str)
 
     def __init__(self, camera_code: str, rtsp_url: str):
+        super().__init__()
         self.camera_code = camera_code
         self.rtsp_url = rtsp_url
         self.running = True
@@ -65,7 +66,6 @@ class CameraStream(QObject):
                     (self.height, self.width, 3)
                 )
                 timestamp = time.time()
-                frame = frame // 255.0
                 self.frame_ready.emit(self.camera_code, timestamp, frame)
             except Exception as e:
                 self.status.emit(f"Error in camera {self.camera_code} stream: {str(e)}")
