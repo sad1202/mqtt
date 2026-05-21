@@ -2,6 +2,7 @@ import time
 from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot
 from ultralytics import YOLO
 import queue
+import numpy as np
 
 
 class InferThread(QThread):
@@ -14,35 +15,36 @@ class InferThread(QThread):
         self.cam_queues = cam_queues or {}
 
     def run(self):
-        
+
         self.model = YOLO(self.model_path, task="detect")
-        
+
         while True:
             if not self.cam_queues:
                 time.sleep(1)
                 continue
-                
+
             batch = []
-            
-            # Poll one frame from each camera's queue
             for cam_code, q in self.cam_queues.items():
-                try:
-                    item = q.get(timeout=0.01)
-                    batch.append(item)
-                except queue.Empty:
-                    continue
-            
+                latest_item = None
+                while True:
+                    try:
+                        latest_item = q.get_nowait()
+                    except queue.Empty:
+                        break
+                if latest_item is not None:
+                    batch.append(latest_item)
+
             if not batch:
-                time.sleep(0.01)
+                time.sleep(0.005)
                 continue
-                
+
             frame = []
             meta = []
             for item in batch:
                 frame.append(item["frame"])
                 meta.append(
                     {
-                        "camera_code": item["camera_code"], 
+                        "camera_code": item["camera_code"],
                         "timestamp": item["timestamp"],
                         "offset_x": item.get("offset_x", 0),
                         "offset_y": item.get("offset_y", 0),
@@ -52,11 +54,19 @@ class InferThread(QThread):
                 )
 
             t1 = time.time()
-            results = self.model(
-                source=frame, device=self.device, imgsz=640, conf=0.25, classes=[2, 3], batch=max(1, len(frame))
+
+            results = self.model.predict(
+                source=frame,
+                device=self.device,
+                imgsz=640,
+                verbose=False,
+                conf=0.25,
+                classes=[2, 3],
+                batch=len(frame),
             )
+
             t2 = time.time()
-            
+
             output = []
             for i, result in enumerate(results):
                 output.append(
@@ -70,5 +80,7 @@ class InferThread(QThread):
                         "result": result,
                     }
                 )
-            print(f"Inference time: {t2 - t1:.2f} seconds")
+
+            latency_ms = (t2 - t1) * 1000
+            print(f"[AI] Batch Size: {len(frame)} | Latency: {latency_ms:.2f} ms")
             self.results_ready.emit(output)

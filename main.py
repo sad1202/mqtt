@@ -51,9 +51,14 @@ def main():
         polygons=polygons,
     )
 
-    model_path = "yolo26n.pt"
+    import os
+    if os.path.exists("yolo26n.engine"):
+        model_path = "yolo26n.engine"
+        print("TensorRT model found! Using: yolo26n.engine")
+    else:
+        model_path = "yolo26n.pt"
+        print("TensorRT model not found. Using fallback PyTorch model: yolo26n.pt")
 
-    # Create queues for each active camera
     cam_queues = { camera["code"]: queue.Queue(maxsize=3) for camera in active_cameras }
 
     infer_thread = InferThread(

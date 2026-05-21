@@ -21,7 +21,7 @@ class MQTTPublisher(QObject):
 
     def is_in_polygon(self, x, y, zones):
         if not zones:
-            return True 
+            return True
         for zone in zones:
             points = zone.get("polygon")
             if not points:
@@ -51,30 +51,41 @@ class MQTTPublisher(QObject):
 
                 cls_id = int(box.cls[0].item())
                 conf = float(box.conf[0].item())
-                
-               
+
                 abs_x1, abs_y1, abs_x2, abs_y2 = box.xyxy[0].tolist()
-                
-               
+
                 real_x1 = abs_x1 + offset_x
                 real_y1 = abs_y1 + offset_y
                 real_x2 = abs_x2 + offset_x
                 real_y2 = abs_y2 + offset_y
-                
-               
+
                 nx1 = real_x1 / orig_w
                 ny1 = real_y1 / orig_h
                 nx2 = real_x2 / orig_w
                 ny2 = real_y2 / orig_h
-                
-           
+
                 cx, cy = (nx1 + nx2) / 2.0, (ny1 + ny2) / 2.0
                 if not self.is_in_polygon(cx, cy, cam_polygons):
                     continue
 
-                label = result.names[cls_id] if hasattr(result, 'names') and cls_id in result.names else str(cls_id)
-                
-                colors = ["#FF3838", "#FF9D97", "#FF701F", "#FFB21D", "#CFD231", "#48F90A", "#92CC17", "#3DDB86", "#1A9334", "#00D4BB"]
+                label = (
+                    result.names[cls_id]
+                    if hasattr(result, "names") and cls_id in result.names
+                    else str(cls_id)
+                )
+
+                colors = [
+                    "#FF3838",
+                    "#FF9D97",
+                    "#FF701F",
+                    "#FFB21D",
+                    "#CFD231",
+                    "#48F90A",
+                    "#92CC17",
+                    "#3DDB86",
+                    "#1A9334",
+                    "#00D4BB",
+                ]
                 color = colors[cls_id % len(colors)]
 
                 detections.append(
