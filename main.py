@@ -1,4 +1,5 @@
 import sys
+import os
 import queue
 import argparse
 from PyQt5.QtCore import QCoreApplication, QThread
@@ -20,10 +21,8 @@ def main():
     app = QCoreApplication(sys.argv)
 
     cfg = MQTT_CONFIG
-    print("Loading cameras from MQTT...")
 
     cameras = load_cameras(cfg)
-    print("Loading polygons from MQTT (this may take up to 5 seconds)...")
     polygons = load_polygons(cfg)
 
     if args.camera_code.strip():
@@ -32,11 +31,10 @@ def main():
         camera_codes = [camera["code"] for camera in cameras if camera.get("code")]
 
     if not camera_codes:
-        print("No ONLINE camera found. Exiting.")
+        ("No ONLINE camera found. Exiting.")
         sys.exit(1)
 
     active_cameras = [c for c in cameras if c.get("code") in camera_codes]
-    print(f"Found {len(active_cameras)} active cameras.")
 
     if len(active_cameras) == 0:
         sys.exit(1)
@@ -51,15 +49,12 @@ def main():
         polygons=polygons,
     )
 
-    import os
     if os.path.exists("yolo26n.engine"):
         model_path = "yolo26n.engine"
-        print("TensorRT model found! Using: yolo26n.engine")
     else:
         model_path = "yolo26n.pt"
-        print("TensorRT model not found. Using fallback PyTorch model: yolo26n.pt")
 
-    cam_queues = { camera["code"]: queue.Queue(maxsize=3) for camera in active_cameras }
+    cam_queues = {camera["code"]: queue.Queue(maxsize=3) for camera in active_cameras}
 
     infer_thread = InferThread(
         model_path=model_path, device="cuda", cam_queues=cam_queues
@@ -74,16 +69,15 @@ def main():
         camera_code = camera["code"]
         rtsp_url = camera["rtsp"]
 
-        print(f"Initializing stream for camera {camera_code}: {rtsp_url}")
 
         thread = QThread()
         stream = CameraStream(
-            camera_code=camera_code, 
-            rtsp_url=rtsp_url, 
-            polygons=polygons.get(camera_code, []), 
-            frame_queue=cam_queues[camera_code]
+            camera_code=camera_code,
+            rtsp_url=rtsp_url,
+            polygons=polygons.get(camera_code, []),
+            frame_queue=cam_queues[camera_code],
         )
-        stream.status.connect(lambda msg, code=camera_code: print(f"[{code}] {msg}"))
+        stream.status.connect(lambda msg, code=camera_code: (f"[{code}] {msg}"))
 
         stream.moveToThread(thread)
         thread.started.connect(stream.run)
@@ -92,8 +86,6 @@ def main():
         camera_streams.append(stream)
 
         thread.start()
-
-    print("Pipeline started successfully. Waiting for frames... (Press Ctrl+C to stop)")
 
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     sys.exit(app.exec_())

@@ -82,5 +82,5 @@ class InferThread(QThread):
                 )
 
             latency_ms = (t2 - t1) * 1000
-            print(f"[AI] Batch Size: {len(frame)} | Latency: {latency_ms:.2f} ms")
+            # print(f"[AI] Batch Size: {len(frame)} | Latency: {latency_ms:.2f} ms")
             self.results_ready.emit(output)
