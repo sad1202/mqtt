@@ -14,7 +14,7 @@ class CameraStream(QObject):
     status = pyqtSignal(str)
 
     def __init__(
-        self, camera_code: str, rtsp_url: str, polygons=None, frame_queue=None
+        self, camera_code: str, rtsp_url: str, polygons=None, frame_queue=None, skip = 2
     ):
         super().__init__()
         self.camera_code = camera_code
@@ -28,7 +28,8 @@ class CameraStream(QObject):
         self.height = 360
 
         self.frame_size = self.width * self.height * 3
-
+        self.skip = skip
+        self.frame_count = 0
     def run(self):
         command = [
             "ffmpeg",
@@ -63,6 +64,9 @@ class CameraStream(QObject):
                 if len(raw) != self.frame_size:
                     self.status.emit(f"Camera {self.camera_code} stream ended")
                     self.restart_ffmpeg(command)
+                    continue
+                self.frame_count += 1
+                if self.frame_count % self.skip != 0:
                     continue
                 frame = np.frombuffer(raw, dtype=np.uint8).reshape(
                     (self.height, self.width, 3)
